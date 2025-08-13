@@ -6,7 +6,7 @@ import base64
 import tempfile
 from src.pdf_utils import extract_text
 from src.text_filter import clean_text, split_sentences, analyze_text_quality
-from src.tts_utils import generate_audio, estimate_duration, cleanup_audio_files
+from src.tts_utils import generate_audio, estimate_duration, cleanup_audio_files, get_audio_duration
 
 # Configure Streamlit page
 st.set_page_config(
@@ -157,6 +157,10 @@ if 'pdf_file' not in st.session_state:
     st.session_state.pdf_file = None
 if 'autoplay' not in st.session_state:
     st.session_state.autoplay = True
+if 'buffer_size' not in st.session_state:
+    st.session_state.buffer_size = 5
+if 'prepared_until' not in st.session_state:
+    st.session_state.prepared_until = -1  # last sentence index prepared on disk
 
 # App header
 st.markdown("""
@@ -238,6 +242,7 @@ if st.session_state.sentences:
         if st.button("🔊 Start", disabled=st.session_state.is_reading):
             st.session_state.current_sentence = 0
             cleanup_audio_files("audio")
+            st.session_state.prepared_until = -1
             st.session_state.is_reading = True
     
     with col3:
@@ -260,6 +265,7 @@ if st.session_state.sentences:
             st.session_state.is_reading = False
             st.session_state.current_sentence = 0
             cleanup_audio_files("audio")
+            st.session_state.prepared_until = -1
 
     # Progress bar
     if st.session_state.sentences:
@@ -277,85 +283,63 @@ if st.session_state.sentences:
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Main content layout
-    col1, col2 = st.columns([3, 2])
-    
-    with col1:
-        st.markdown("### 📖 PDF Document")
-        pdf_html = render_pdf_viewer(st.session_state.pdf_file)
-        st.markdown(pdf_html, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("### 🎯 Reading Progress")
-        st.markdown('<div class="reading-panel">', unsafe_allow_html=True)
-
-        current_idx = st.session_state.current_sentence
-
-        # Always show something meaningful
-        if st.session_state.sentences:
-            # Previous
-            if current_idx > 0:
-                prev_sentence = st.session_state.sentences[current_idx - 1]
-                st.markdown(f'<div class="previous-sentence">Previous: {prev_sentence}</div>', unsafe_allow_html=True)
-
-            # Current (Now Reading)
-            if current_idx < len(st.session_state.sentences):
-                current_sentence = st.session_state.sentences[current_idx]
-                st.markdown(f'<div class="current-sentence">🎯 Now Reading: {current_sentence}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="current-sentence">🎯 Done</div>', unsafe_allow_html=True)
-
-            # Next
-            if current_idx < len(st.session_state.sentences) - 1:
-                next_sentence = st.session_state.sentences[current_idx + 1]
-                st.markdown(f'<div class="next-sentence">Next: {next_sentence}</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Single column: PDF only
+    st.markdown("### 📖 PDF Document")
+    pdf_html = render_pdf_viewer(st.session_state.pdf_file)
+    st.markdown(pdf_html, unsafe_allow_html=True)
     
     # Audio playback area
     audio_placeholder = st.empty()
+    status_placeholder = st.empty()
 
     # Reading logic
     if st.session_state.is_reading and st.session_state.current_sentence < len(st.session_state.sentences):
-        current_sentence = st.session_state.sentences[st.session_state.current_sentence]
-        
-        # Generate and play audio
-        if not os.path.exists("audio"):
-            os.makedirs("audio")
-        
-        audio_path = f"audio/sentence_{st.session_state.current_sentence:03}.mp3"
-        
-        if generate_audio(current_sentence, audio_path):
-            # Play the audio
-            with audio_placeholder.container():
-                idx = st.session_state.current_sentence
+        # Ensure audio dir exists
+        os.makedirs("audio", exist_ok=True)
+
+        # Pre-generate up to buffer_size sentences from current index
+        start_idx = st.session_state.current_sentence
+        end_idx = min(len(st.session_state.sentences), start_idx + st.session_state.buffer_size)
+        for i in range(start_idx, end_idx):
+            audio_path_i = f"audio/sentence_{i:03}.mp3"
+            if i > st.session_state.prepared_until or not os.path.exists(audio_path_i):
+                ok = generate_audio(st.session_state.sentences[i], audio_path_i)
+                if not ok:
+                    st.error(f"❌ Failed to generate audio for sentence {i+1}")
+                    st.session_state.is_reading = False
+                    st.stop()
+                st.session_state.prepared_until = max(st.session_state.prepared_until, i)
+
+        # Play current sentence (from beginning)
+        current_sentence = st.session_state.sentences[start_idx]
+        audio_path = f"audio/sentence_{start_idx:03}.mp3"
+
+        with audio_placeholder.container():
+            try:
                 if st.session_state.autoplay:
-                    try:
-                        with open(audio_path, 'rb') as f:
-                            b64 = base64.b64encode(f.read()).decode('utf-8')
-                        components.html(
-                            f"""
-                            <audio controls autoplay onloadeddata='this.currentTime=0; this.play();' preload='auto'>
-                                <source src='data:audio/mp3;base64,{b64}' type='audio/mpeg'>
-                            </audio>
-                            """,
-                            height=80,
-                        )
-                        st.caption("If you don’t hear anything, click Play once to allow audio in your browser.")
-                    except Exception:
-                        st.audio(audio_path, format='audio/mp3')
+                    with open(audio_path, 'rb') as f:
+                        b64 = base64.b64encode(f.read()).decode('utf-8')
+                    components.html(
+                        f"""
+                        <audio controls autoplay onloadeddata='this.currentTime=0; this.play();' preload='auto'>
+                            <source src='data:audio/mp3;base64,{b64}' type='audio/mpeg'>
+                        </audio>
+                        """,
+                        height=80,
+                    )
+                    st.caption("If you don’t hear anything, click Play once to allow audio in your browser.")
                 else:
                     st.audio(audio_path, format='audio/mp3')
-            
-            # Estimate duration and wait
-            duration = estimate_duration(current_sentence)
-            time.sleep(duration + 1.0)
-            
-            # Move to next sentence
-            st.session_state.current_sentence += 1
-            st.rerun()
-        else:
-            st.error("❌ Failed to generate audio")
-            st.session_state.is_reading = False
+            except Exception:
+                st.audio(audio_path, format='audio/mp3')
+
+        # Use real duration if available to avoid skips
+        duration = get_audio_duration(audio_path, fallback_text=current_sentence)
+        time.sleep(duration + 0.25)
+
+        # Move to next sentence and continue
+        st.session_state.current_sentence += 1
+        st.rerun()
     
     elif st.session_state.is_reading and st.session_state.current_sentence >= len(st.session_state.sentences):
         # Reading completed
@@ -371,6 +355,10 @@ with st.sidebar:
     st.info("**Quality:** High")
     st.checkbox("Autoplay audio (may need 1st click)", value=st.session_state.autoplay, key='autoplay',
                 help="Browsers often block autoplay until you interact (click Start or Play).")
+    st.session_state.buffer_size = st.number_input(
+        "Pre-buffer sentences", min_value=1, max_value=20, value=st.session_state.buffer_size, step=1,
+        help="How many sentences to generate before starting playback."
+    )
     
     if st.session_state.sentences:
         st.markdown("### 📊 Document Stats")
