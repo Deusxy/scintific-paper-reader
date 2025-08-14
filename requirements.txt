@@ -2,3 +2,4 @@ streamlit
 gtts
 PyMuPDF
 nltk
+mutagen
