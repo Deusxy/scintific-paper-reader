@@ -1,6 +1,6 @@
-# 🗣️ NaturalReader Clone
+# 🗣️ Paper Reader
 
-A professional Python Streamlit app that replicates NaturalReader functionality - upload PDFs, view them inline, and have them read aloud with real-time sentence highlighting.
+A professional Python Streamlit app that replicates Paper Reader functionality - upload PDFs, view them inline, and have them read aloud with real-time sentence highlighting.
 
 ## ✨ Features
 
