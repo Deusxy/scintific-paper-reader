@@ -22,6 +22,17 @@ st.set_page_config(
 
 # Custom CSS for NaturalReader-like interface
 st.markdown("""
+<style>
+.pdf-viewer {
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    height: 80vh;
+    width: 100%;
+    overflow: hidden;
+    background: #f9f9f9;
+    aspect-ratio: 8.5 / 11;
+}
+.control-bar {
     color: white;
     padding: 20px;
     border-radius: 10px;
