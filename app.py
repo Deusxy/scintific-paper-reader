@@ -1,3 +1,4 @@
+# Imports
 import streamlit as st
 import streamlit.components.v1 as components
 import os
@@ -7,6 +8,10 @@ import tempfile
 from src.pdf_utils import extract_text
 from src.text_filter import clean_text, split_sentences, analyze_text_quality
 from src.tts_utils import generate_audio, estimate_duration, cleanup_audio_files, get_audio_duration
+from src.state_utils import init_session_state
+
+# Initialize session state (must be before any Streamlit UI code)
+init_session_state(st)
 
 # Configure Streamlit page
 st.set_page_config(
@@ -17,71 +22,12 @@ st.set_page_config(
 
 # Custom CSS for NaturalReader-like interface
 st.markdown("""
-<style>
-.main-container {
-    display: flex;
-    height: 100vh;
-}
-
-.pdf-viewer {
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    height: 700px;
-    overflow: hidden;
-    background: #f9f9f9;
-}
-
-.reading-panel {
-    background: #ffffff;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    padding: 20px;
-    height: 700px;
-    overflow-y: auto;
-}
-
-.current-sentence {
-    background: linear-gradient(90deg, #ffeb3b, #fff59d);
-    padding: 15px;
-    border-radius: 8px;
-    margin: 10px 0;
-    font-size: 18px;
-    line-height: 1.6;
-    font-weight: 500;
-    border-left: 4px solid #f57c00;
-    animation: highlight 0.5s ease-in-out;
-}
-
-.next-sentence {
-    background: #e3f2fd;
-    padding: 12px;
-    border-radius: 8px;
-    margin: 8px 0;
-    font-size: 16px;
-    line-height: 1.5;
-    border-left: 4px solid #2196f3;
-}
-
-.previous-sentence {
-    background: #f5f5f5;
-    padding: 10px;
-    border-radius: 8px;
-    margin: 5px 0;
-    font-size: 14px;
-    line-height: 1.4;
-    color: #666;
-    opacity: 0.7;
-}
-
-.control-bar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     padding: 20px;
     border-radius: 10px;
     margin: 20px 0;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
-
 .stats-panel {
     background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     color: white;
@@ -89,7 +35,6 @@ st.markdown("""
     border-radius: 8px;
     margin: 10px 0;
 }
-
 .filter-stats {
     background: #e8f5e8;
     padding: 15px;
@@ -97,28 +42,49 @@ st.markdown("""
     margin: 10px 0;
     border-left: 4px solid #4caf50;
 }
-
-@keyframes highlight {
-    from { transform: scale(0.98); opacity: 0.8; }
-    to { transform: scale(1); opacity: 1; }
-}
-
-.stButton > button {
-    background: linear-gradient(90deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-    border-radius: 25px;
-    padding: 10px 20px;
-    font-weight: bold;
-    transition: all 0.3s ease;
-}
-
-.stButton > button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-}
+@keyframes highlight { from { transform: scale(0.98); opacity: 0.8; } to { transform: scale(1); opacity: 1; } }
+.stButton > button { background: linear-gradient(90deg, #667eea, #764ba2); color: white; border: none; border-radius: 25px; padding: 10px 20px; font-weight: bold; transition: all 0.3s ease; }
+.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
 </style>
 """, unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.markdown("### ⚙️ Settings")
+    st.info("**Voice:** Google TTS")
+    st.info("**Language:** English") 
+    st.info("**Quality:** High")
+
+    # Reading mode selection
+    reading_mode = st.radio(
+        "Choose reading mode:",
+        ["Full document audio", "Step-by-step reading"],
+        index=0,
+        key="reading_mode",
+        help="Full audio: generates one MP3 for the whole document. Step-by-step: reads and plays sentence by sentence."
+    )
+
+    # Playback speed for full audio mode
+    playback_speed = 1.0
+    if reading_mode == "Full document audio":
+        playback_speed = st.slider(
+            "Playback speed (x)", min_value=0.5, max_value=2.0, value=1.0, step=0.05,
+            help="Adjust playback speed for the full audio file."
+        )
+
+    st.session_state.buffer_size = st.number_input(
+        "Pre-buffer sentences", min_value=1, max_value=20, value=st.session_state.buffer_size, step=1,
+        help="How many sentences to generate before starting playback.")
+
+    if st.session_state.sentences:
+        st.markdown("### 📊 Document Stats")
+        st.write(f"**Sentences:** {len(st.session_state.sentences)}")
+        total_words = sum(len(s.split()) for s in st.session_state.sentences)
+        st.write(f"**Words:** {total_words}")
+        est_time = total_words / 150  # 150 WPM
+        st.write(f"**Est. Time:** {est_time:.1f} min")
+        
+
 
 def render_pdf_viewer(pdf_file):
     """Render PDF in iframe like NaturalReader."""
@@ -145,22 +111,6 @@ def render_pdf_viewer(pdf_file):
     </div>
     '''
     return pdf_display
-
-# Initialize session state
-if 'sentences' not in st.session_state:
-    st.session_state.sentences = []
-if 'is_reading' not in st.session_state:
-    st.session_state.is_reading = False
-if 'current_sentence' not in st.session_state:
-    st.session_state.current_sentence = 0
-if 'pdf_file' not in st.session_state:
-    st.session_state.pdf_file = None
-if 'autoplay' not in st.session_state:
-    st.session_state.autoplay = True
-if 'buffer_size' not in st.session_state:
-    st.session_state.buffer_size = 5
-if 'prepared_until' not in st.session_state:
-    st.session_state.prepared_until = -1  # last sentence index prepared on disk
 
 # App header
 st.markdown("""
@@ -288,58 +238,100 @@ if st.session_state.sentences:
     pdf_html = render_pdf_viewer(st.session_state.pdf_file)
     st.markdown(pdf_html, unsafe_allow_html=True)
     
+
     # Audio playback area
     audio_placeholder = st.empty()
     status_placeholder = st.empty()
 
-    # Reading logic
-    if st.session_state.is_reading and st.session_state.current_sentence < len(st.session_state.sentences):
-        # Ensure audio dir exists
-        os.makedirs("audio", exist_ok=True)
 
-        # Pre-generate up to buffer_size sentences from current index
-        start_idx = st.session_state.current_sentence
-        end_idx = min(len(st.session_state.sentences), start_idx + st.session_state.buffer_size)
-        for i in range(start_idx, end_idx):
-            audio_path_i = f"audio/sentence_{i:03}.mp3"
-            if i > st.session_state.prepared_until or not os.path.exists(audio_path_i):
-                ok = generate_audio(st.session_state.sentences[i], audio_path_i)
+    # Reading logic
+    if st.session_state.is_reading and st.session_state.sentences:
+        reading_mode = st.session_state.reading_mode if 'reading_mode' in st.session_state else "Full document audio"
+        playback_speed = st.session_state.playback_speed if 'playback_speed' in st.session_state else 1.0
+        if reading_mode == "Full document audio":
+            # Generate big audio file for the whole document at the start
+            os.makedirs("audio", exist_ok=True)
+            full_text = " ".join(st.session_state.sentences)
+            big_audio_path = "audio/full_document.mp3"
+            if not os.path.exists(big_audio_path):
+                ok = generate_audio(full_text, big_audio_path)
                 if not ok:
-                    st.error(f"❌ Failed to generate audio for sentence {i+1}")
+                    st.error("❌ Failed to generate full document audio.")
                     st.session_state.is_reading = False
                     st.stop()
-                st.session_state.prepared_until = max(st.session_state.prepared_until, i)
 
-        # Play current sentence (from beginning)
-        current_sentence = st.session_state.sentences[start_idx]
-        audio_path = f"audio/sentence_{start_idx:03}.mp3"
+            # Play the big audio file with adjustable speed
+            with audio_placeholder.container():
+                try:
+                    if st.session_state.autoplay:
+                        with open(big_audio_path, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('utf-8')
+                        components.html(
+                            f"""
+                            <audio id='mainAudio' controls autoplay onloadeddata='this.currentTime=0; this.play();' preload='auto'>
+                                <source src='data:audio/mp3;base64,{b64}' type='audio/mpeg'>
+                            </audio>
+                            <script>
+                            var audio = document.getElementById('mainAudio');
+                            if (audio) {{ audio.playbackRate = {playback_speed}; }}
+                            </script>
+                            """,
+                            height=100,
+                        )
+                        st.caption("If you don’t hear anything, click Play once to allow audio in your browser.")
+                    else:
+                        st.audio(big_audio_path, format='audio/mp3')
+                except Exception:
+                    st.audio(big_audio_path, format='audio/mp3')
 
-        with audio_placeholder.container():
-            try:
-                if st.session_state.autoplay:
-                    with open(audio_path, 'rb') as f:
-                        b64 = base64.b64encode(f.read()).decode('utf-8')
-                    components.html(
-                        f"""
-                        <audio controls autoplay onloadeddata='this.currentTime=0; this.play();' preload='auto'>
-                            <source src='data:audio/mp3;base64,{b64}' type='audio/mpeg'>
-                        </audio>
-                        """,
-                        height=80,
-                    )
-                    st.caption("If you don’t hear anything, click Play once to allow audio in your browser.")
-                else:
+            # Show download button for the big audio file
+            if os.path.exists(big_audio_path):
+                st.download_button("Download Full Audio (MP3)", open(big_audio_path, "rb"), file_name="full_document.mp3", mime="audio/mp3")
+
+        elif reading_mode == "Step-by-step reading":
+            # Sentence-by-sentence reading logic (previous version)
+            start_idx = st.session_state.current_sentence
+            end_idx = min(len(st.session_state.sentences), start_idx + st.session_state.buffer_size)
+            for i in range(start_idx, end_idx):
+                audio_path_i = f"audio/sentence_{i:03}.mp3"
+                if i > st.session_state.prepared_until or not os.path.exists(audio_path_i):
+                    ok = generate_audio(st.session_state.sentences[i], audio_path_i)
+                    if not ok:
+                        st.error(f"❌ Failed to generate audio for sentence {i+1}")
+                        st.session_state.is_reading = False
+                        st.stop()
+                    st.session_state.prepared_until = max(st.session_state.prepared_until, i)
+
+            # Play current sentence (from beginning)
+            current_sentence = st.session_state.sentences[start_idx]
+            audio_path = f"audio/sentence_{start_idx:03}.mp3"
+
+            with audio_placeholder.container():
+                try:
+                    if st.session_state.autoplay:
+                        with open(audio_path, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('utf-8')
+                        components.html(
+                            f"""
+                            <audio controls autoplay onloadeddata='this.currentTime=0; this.play();' preload='auto'>
+                                <source src='data:audio/mp3;base64,{b64}' type='audio/mpeg'>
+                            </audio>
+                            """,
+                            height=80,
+                        )
+                        st.caption("If you don’t hear anything, click Play once to allow audio in your browser.")
+                    else:
+                        st.audio(audio_path, format='audio/mp3')
+                except Exception:
                     st.audio(audio_path, format='audio/mp3')
-            except Exception:
-                st.audio(audio_path, format='audio/mp3')
 
-        # Use real duration if available to avoid skips
-        duration = get_audio_duration(audio_path, fallback_text=current_sentence)
-        time.sleep(duration + 0.25)
+            # Use real duration if available to avoid skips
+            duration = get_audio_duration(audio_path, fallback_text=current_sentence)
+            time.sleep(duration + 0.25)
 
-        # Move to next sentence and continue
-        st.session_state.current_sentence += 1
-        st.rerun()
+            # Move to next sentence and continue
+            st.session_state.current_sentence += 1
+            st.rerun()
     
     elif st.session_state.is_reading and st.session_state.current_sentence >= len(st.session_state.sentences):
         # Reading completed
@@ -347,18 +339,13 @@ if st.session_state.sentences:
         st.success("🎉 Reading completed!")
         st.balloons()
 
+
 # Sidebar
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
     st.info("**Voice:** Google TTS")
     st.info("**Language:** English") 
     st.info("**Quality:** High")
-    st.checkbox("Autoplay audio (may need 1st click)", value=st.session_state.autoplay, key='autoplay',
-                help="Browsers often block autoplay until you interact (click Start or Play).")
-    st.session_state.buffer_size = st.number_input(
-        "Pre-buffer sentences", min_value=1, max_value=20, value=st.session_state.buffer_size, step=1,
-        help="How many sentences to generate before starting playback."
-    )
     
     if st.session_state.sentences:
         st.markdown("### 📊 Document Stats")
