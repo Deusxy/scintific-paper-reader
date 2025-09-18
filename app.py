@@ -15,7 +15,7 @@ init_session_state(st)
 
 # Configure Streamlit page
 st.set_page_config(
-    page_title="NaturalReader Clone",
+    page_title="Listen2Research",
     page_icon="🗣️",
     layout="wide"
 )
@@ -116,7 +116,7 @@ def render_pdf_viewer(pdf_file):
 st.markdown("""
 <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             color: white; border-radius: 10px; margin-bottom: 30px;">
-    <h1>🗣️ NaturalReader Clone</h1>
+    <h1>🗣️ Listen2Research</h1>
     <p style="font-size: 18px;">Advanced PDF Reader with Intelligent Text Filtering</p>
 </div>
 """, unsafe_allow_html=True)
@@ -363,4 +363,4 @@ with st.sidebar:
 
 # Footer
 st.markdown("---")
-st.markdown("**🚀 Advanced NaturalReader Clone** - Intelligent PDF Reading with Aggressive Text Filtering")
+st.markdown("**🚀 Listen2Research** - Intelligent PDF Reading with Aggressive Text Filtering")

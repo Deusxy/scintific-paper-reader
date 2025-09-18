@@ -1,4 +1,4 @@
-# 🗣️ Paper Reader
+# 🗣️ Listen2Research
 
 A professional Python Streamlit app that replicates Paper Reader functionality - upload PDFs, view them inline, and have them read aloud with real-time sentence highlighting.
 
@@ -17,7 +17,7 @@ A professional Python Streamlit app that replicates Paper Reader functionality -
 ## 🏗️ Architecture
 
 ```
-naturalreader-clone/
+Listen2Research/
 ├── app.py                    # Main Streamlit application
 ├── Dockerfile               # Container configuration
 ├── docker-compose.yml       # Docker Compose setup
@@ -54,8 +54,8 @@ naturalreader-clone/
 #### With Docker:
 ```bash
 # Build and run with Docker
-docker build -t naturalreader-clone .
-docker run -d -p 8501:8501 -v ./data:/app/data -v ./audio:/app/audio naturalreader-clone
+docker build -t listen2research .
+docker run -d -p 8501:8501 -v ./data:/app/data -v ./audio:/app/audio listen2research
 
 # Or with Docker Compose
 docker-compose up --build -d
@@ -126,19 +126,19 @@ Open your browser and go to: **http://localhost:8501**
 ### Podman Commands
 ```bash
 # Build image
-podman build -t naturalreader-clone .
+podman build -t listen2research .
 
 # Run container
-podman run -d --name naturalreader-clone -p 8501:8501 naturalreader-clone
+podman run -d --name listen2research -p 8501:8501 listen2research
 
 # View logs
-podman logs naturalreader-clone
+podman logs listen2research
 
 # Stop container
-podman stop naturalreader-clone
+podman stop listen2research
 
 # Remove container
-podman rm naturalreader-clone
+podman rm listen2research
 ```
 
 ### Docker Commands

@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  naturalreader:
+  listen2research:
     build: .
-    container_name: naturalreader-clone
+    container_name: listen2research
     ports:
       - "8501:8501"
     volumes:
